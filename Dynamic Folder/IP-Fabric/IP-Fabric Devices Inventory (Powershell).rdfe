@@ -1,0 +1,31 @@
+{
+  "Objects": [
+    {
+      "Name": "IP Fabric Inventory",
+      "DynamicCredentialScriptInterpreter": "json",
+      "ScriptInterpreter": "powershell",
+      "CustomProperties": [
+        {
+          "Type": "Text",
+          "Value": "https://ipfabric.local/api/v6.2/tables/inventory/devices",
+          "Name": "IP Fabric Inventory URL"
+        },
+        {
+          "Type": "Text",
+          "Value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "Name": "ApiKey"
+        },
+        {
+          "Type": "Text",
+          "Value": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "Name": "CredentialID"
+        }
+      ],
+      "Description": "This script utilizes PowerShell to generate a list of available devices (not hosts) from IP Fabric inventory. Use Custom Properties to modify URL, API Token and Credentials. This module reuqires PowerShell 7+.",
+      "Type": "DynamicFolder",
+      "Notes": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"  \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\"><html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>IP Fabric Inventory</title></head><body>This script utilizes PowerShell to generate a list of available devices (not hosts) from IP Fabric inventory. Use Custom Properties to modify URL, API Token and Credentials. This module reuqires PowerShell 7+.<table></table></body></html>",
+      "Script": "# ---------------------------------------------------------------------------------------------------------------------\r\n# Note that the whole output of the script will be parsed as rJSON and should be UTF8 encoded\r\n# The following lines ensure that informational cmdlet output, warnings or errors are not written to the output stream \r\n# ---------------------------------------------------------------------------------------------------------------------\r\n$global:ErrorActionPreference = \"Stop\"\r\n$global:WarningPreference = \"SilentlyContinue\"\r\n$global:InformationPreference = \"SilentlyContinue\"\r\n$global:VerbosePreference = \"SilentlyContinue\"\r\n$global:DebugPreference = \"SilentlyContinue\"\r\n$global:ProgressPreference = \"SilentlyContinue\"\r\n$global:OutputEncoding = New-Object Text.Utf8Encoding -ArgumentList (, $false) # BOM-less\r\n[Console]::OutputEncoding = $global:OutputEncoding\r\n# ---------------------------------------------------------------------------------------------------------------------\r\n\r\n$payload = @{\r\n    columns  = (\r\n        \"hostname\", \"loginIp\", \"siteName\", \"devType\", \"loginType\" \r\n    )\r\n    filters  = @{\r\n        \"devType\"   = (\"neq\", \"ap\")\r\n        \"loginType\" = (\"eq\", \"ssh\")\r\n    }\r\n    snapshot = '$last'\r\n} | ConvertTo-Json -Depth 10\r\n\r\n# TLS error? Add -SkipCertificateCheck to Invoke-WebRequest\r\n$devices = ((Invoke-WebRequest -SkipCertificateCheck -Headers @{\"X-API-Token\" = '$CustomProperty.APIKey$'; \"Content-Type\" = \"application/json\" } -Uri '$CustomProperty.IPFabricInventoryURL$' -Method Post -Body $payload).Content | ConvertFrom-Json).data\r\n\r\n# Group by Sites\r\n$sites = $devices | group-object -Property siteName\r\n\r\n# Transform to RoyalTS format\r\n$royalTSResult = @{ Objects = @() };\r\n\r\nforeach ($site in $sites) {\r\n    $royalTSfolder = @{ Name = $site.Name; Type = \"Folder\"; Objects = @() }\r\n    foreach ($device in $site.Group) {\r\n        if ($device.devType -eq \"rdp\") {\r\n            #$royalTSDevice = @{Type = \"RemoteDesktop\"; Name = $device.hostname; Computername = $device.loginIp; CredentialID = '$CustomProperty.CredentialID$'; }\r\n        }\r\n        elseif ($device.devType -eq \"ssh\") {\r\n            $royalTSDevice = @{Type = \"TerminalConnection\"; Name = $device.hostname; Computername = $device.loginIp; CredentialID = '$CustomProperty.CredentialID$' }\r\n        }\r\n        $royalTSfolder.Objects += $royalTSDevice\r\n    }\r\n    $royalTSDevices.Objects += $royalTSfolder\r\n}\r\n# Output as JSON\r\n$royalTSResult | ConvertTo-Json -Depth 100\r\n"
+    }
+  ],
+  "Name": "Dynamic Folder Export"
+}
